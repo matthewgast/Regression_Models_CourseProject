@@ -1,0 +1,208 @@
+---
+title: "Fuel Economy Dependence on Transmission Type"
+author: "Matthew Gast"
+date: "June 2015"
+output:
+  pdf_document: 
+    fig_height: 3
+  html_document:
+    fig_caption: yes
+    keep_md: yes
+---
+
+# Executive Summary
+
+At first glance, manual transmissions seem to offer improved fuel
+economy.  However, after controlling for the engine power and weight of the car, the effect of a manual transmission is not statistically significant.  The improved fuel economy of manual transmissions is apparently due to the increased prevalence of manual transmissions
+in lighter cars with smaller engines.  The
+message for car buyers is clear: if you want better fuel economy, purchase a lighter
+car with a smaller engine, and pay only slight attention to the transmission
+type.
+
+# Exploratory Analysis
+
+The data set analyzed in this paper, `mtcars`, consists of data on 32
+automobiles across 10 dimensions. Begin by taking an exploratory look at the data, as shown by figures in the appendix.  The boxplot shows that in general, fuel economy is higher
+for manual transmission cars, but of course, the purpose of this
+analysis is to determine if that analysis is due to the transmission
+type or other confounding factors.  For example, in the 1970s,
+automatic transmissions were expensive extra-cost options on smaller
+and therefore higher-mileage cars, but standard on larger low-mileage
+cars.
+
+```{r setup, echo=-(1:5), message=FALSE}
+data(mtcars)
+mtcars_raw <- mtcars
+library(ggplot2)
+library(gridExtra)
+library(GGally)
+```
+
+# Regression Analysis
+
+To assess the effect of transmission type, we will consider all the
+available variables that can explain fuel economy.  The purpose of
+this analysis is to determine whether the type of transmission affects
+fuel economy.  Intuitively, the expectation is that a manual
+transmission will increase fuel economy, and large cars and their
+associated large engines will decrease fuel economy.
+
+```{r cleanup, echo=FALSE}
+mtcars$am <- as.factor(mtcars$am)
+levels(mtcars$am) <- c("auto","manual")
+mtcars$cyl <- as.factor(mtcars$cyl)
+mtcars$vs <- as.factor(mtcars$vs)
+levels(mtcars$vs) <- c("V","straight")
+mtcars$gear <- as.factor(mtcars$gear)
+mtcars$carb <- as.factor(mtcars$carb)
+```
+
+A pairwise plot of variables showing bivariate correlations is in the
+appendix.  From the pairwise plot and calculated correlation values,
+it is apparent that the number of cylinders, engine displacement, and power are all strongly
+correlated.  In this analysis, we choose horsepower because that is the most commonly known statistic to buyers.
+
+In addition to power, we expect that the weight of
+the car matters to fuel economy because heavier cars are harder to
+move.  Finally, it is common for mechanically simpler manual
+transmissions to have more gears.  To control for whether the apparent
+fuel economy of manual transmissions is due to having more forward
+gears, we will include that in our modeling.
+
+With potentially four predictors to choose from (transmission type,
+power, weight, and the number of gears), we first
+perform an analysis of variance between the four models.  The analysis of variance shows that adding the number of cylinders and
+weight offer significant improvements to the model at the .01 level of
+significance, but the number of gears does not.
+
+```{r models}
+fit1 <- lm (mpg ~ am, data=mtcars)
+fit2 <- lm (mpg ~ am + hp, data=mtcars)
+fit3 <- lm (mpg ~ am + hp + wt, data=mtcars)
+fit4 <- lm (mpg ~ am + hp + wt + gear, data=mtcars)
+anova(fit1, fit2, fit3, fit4)
+```
+
+Consider the results of the third model.  It explains 84% of the
+variation in the data, and all coefficients except the transmission
+type are significant at the .01 level.  The coefficients show that
+increasing power decreases fuel economy, with each
+10 horsepower resulting in a 3 mpg decrease.  Also as expected, increases
+in weight decrease fuel economy, with each thousand pounds decreasing
+fuel economy by about 2.9 mpg.  The coefficient on the transmission is
+positive, well within a standard
+deviation of zero, indicating that a manual transmission is expected to increase fuel economy by 2 mpg, but the effect is not statistically
+signficant.
+
+```{r model_summary}
+summary(fit3)
+```
+
+Finally, we consider the robustness of the model.  In the appendix, a
+residual plot shows that the residuals from the model are normally
+distributed, with only one outlier on the residual plot.  However,
+there are no strong single outliers that warp the model.  Not surprisingly, a high-performance Maserati is the biggest single influencer.
+
+```{r}
+head(sort(hatvalues(fit3),decreasing=TRUE),n=3)
+```
+
+\newpage
+
+# Appendix of Figures
+
+1.  Exploratory analysis - transmisssion type
+
+This boxplot compares fuel economy by transmission type.  Manual
+transmissions have a higher average, and the standard deviations of
+manual and automatic transmissions do not overlap.  Manual
+transmissions appear to have better fuel economy, but of course, this
+plot does not take into account other factors.
+
+```{r transmission_boxplot, echo=FALSE}
+car_box <- ggplot(aes(x=am,y=mpg),data=mtcars)+geom_boxplot(aes(fill=am)) + xlab("Transmission Type") + ylab("Fuel Economy (mpg)") + ggtitle("Fuel Economy by Transmission") + scale_fill_discrete(name="Transmission\nType")
+car_box
+```
+
+2.  Exploratory analysis - pairwise plots
+
+The following pairwise plots show the bivariate correlation between
+various factors.  When building a regression model, it is best to
+avoid using predictors that are strongly correlated.  This pairwise
+plot depicts correlation visually by plotting data in the lower left
+side of the diagonal, as well as displaying the calculated correlation
+in the upper right side of the diagonal.
+
+These panel plots and correlation values can be used in selecting
+predictors for regression models.  For example, there are strong
+correlations between the number of cylinders, engine displacement, and
+horsepower.  These correlations are not surprising, because larger
+engines develop more power by using more cylinders.  When building a
+regression model, it is best to avoid choosing highly correlated
+predictors, however.
+
+```{r pairwise_panel, messages=FALSE, fig.height=6, echo=FALSE}
+pairpanel <- ggpairs(mtcars_raw,
+   title="Bivariate Correlations in Automotive Descriptors",
+   lower=list(continuous="smooth"),
+   diag=list(continuous="blank"), 
+   upper=list(params=list(corSize=4)),
+   axisLabels="show")
+pairpanel
+```
+
+3. Residual plot
+
+```{r ggplot_qq, echo=FALSE, messages=FALSE}
+gg_qq <- function(x, distribution = "norm", ... , label.outliers=FALSE, conf = 0.95 ){
+
+  words <- strsplit(distribution, " ")[[1]]
+  distName <- paste(toupper(substring(words, 1,1)),
+  	            tolower(substring(words, 2)),
+                    sep="", collapse=" ")
+
+  q.function <- eval(parse(text = paste0("q", distribution)))
+  d.function <- eval(parse(text = paste0("d", distribution)))
+  x <- na.omit(x)
+  ord <- order(x)
+  n <- length(x)
+  P <- ppoints(length(x))
+  df <- data.frame(ord.x = x[ord], z = q.function(P, ...))
+
+  Q.x <- quantile(df$ord.x, c(0.25, 0.75))
+  Q.z <- q.function(c(0.25, 0.75), ...)
+  b <- diff(Q.x)/diff(Q.z)
+  coef <- c(Q.x[1] - b * Q.z[1], b)
+
+  zz <- qnorm(1 - (1 - conf)/2)
+  SE <- (coef[2]/d.function(df$z)) * sqrt(P * (1 - P)/n)
+  fit.value <- coef[1] + coef[2] * df$z
+  df$upper <- fit.value + zz * SE
+  df$lower <- fit.value - zz * SE
+
+  labels<-names(x)
+  if(label.outliers==TRUE){ 
+    df$label <- ifelse(df$ord.x > df$upper | df$ord.x < df$lower, labels[ord],"")
+    }
+
+  p <- ggplot(df, aes(x=z, y=ord.x)) +
+    geom_point() + 
+    geom_abline(intercept = coef[1], slope = coef[2]) +
+    geom_ribbon(aes(ymin = lower, ymax = upper), alpha=0.2) +
+    ggtitle(paste(distName,"Q-Q Plot")) +
+    xlab(paste("Theoretical",distName,"Quantile")) +
+    ylab(paste("Sample",distName,"Quantile")) 
+  if(label.outliers==TRUE) p <- p + geom_text( aes(label = label))
+   return(p)
+}
+```
+
+The residuals fitted to the model follow a normal distribution.  In
+fact, there is only one outlier from a 95% confidence range, labeled
+on the plot.^[The `gg_qq` function used here is customized from
+*Foo0*'s post on StackOverflow:
+http://stackoverflow.com/questions/4357031/qqnorm-and-qqline-in-ggplot2]
+
+```{r resid_plot, echo=FALSE}
+gg_qq(fit3$residuals,label.outliers=TRUE)
+```
